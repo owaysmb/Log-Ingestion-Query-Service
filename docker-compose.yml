@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: ingest_logs
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ingest_logs"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  db-migrate:
+    build:
+      context: .
+      target: build
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://postgres:prisma@postgres:5432/ingest_logs?schema=public"
+    command: npx prisma migrate deploy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      # Host is the compose service name inside the network
+      DATABASE_URL: "postgresql://postgres:prisma@postgres:5432/ingest_logs?schema=public"
+    ports:
+      - "8080:8080"
+    restart: always
+
+volumes:
+  postgres_data:

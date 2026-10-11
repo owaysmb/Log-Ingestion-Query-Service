@@ -1,0 +1,24 @@
+// This is your Prisma schema file, learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Log {
+  id         BigInt   @id @default(autoincrement())
+  timestamp  DateTime @db.Timestamptz(3)
+  level      String   @db.VarChar(16)
+  service    String   @db.VarChar(100)
+  message    String
+  attributes Json     @default("{}") @db.JsonB
+  ingestedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([timestamp, id])
+  @@index([service, timestamp, id])
+  @@index([level, timestamp, id])
+}
