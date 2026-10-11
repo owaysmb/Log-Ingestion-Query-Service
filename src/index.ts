@@ -5,7 +5,6 @@ import { prisma } from "./lib/prisma.js";
 
 const app = express();
 
-app.use(express.json());
 
 
 export const GetHealth = app.get("/health" , async (req:Request,res:Response) =>{
@@ -93,6 +92,42 @@ export const PostLogs = app.post("/logs", async (req:Request,res:Response)=>{
 });
 
 
+export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
+
+    try {
+      
+      const {service,level,since,until,attr,q,limit} = req.query;
+
+      const [key, value] = String(attr).split(".");
+
+      const logs = await prisma.log.findMany({
+        take: Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit) , 1000) : 100,
+        where:{
+          AND:[
+
+            service && {service: String(service) },
+            since && {timestamp: {gte:new Date(String(since))}} ,
+            until && {timestamp: {lte:new Date(String(until))}},
+            level !== undefined && { level: String(level) },
+            attr && { attributes: { path: key, string_contains: value } },
+            q && { message: { contains: String(q) } }   
+            
+          ].filter(Boolean) as any[]
+        },
+        orderBy: { timestamp: "desc" }
+      })
+      res.json({logs : logs.map((l) => ({...l , id: l.id.toString() }))})
+
+
+    } catch (err) {
+      res.status(500).json("Error Getting Logs");
+      console.log(err);
+    }
+
+});
+
+
+app.use(express.json());
 const PORT = Number(process.env.PORT ?? 8080);
 
 app.listen(PORT, () => {
