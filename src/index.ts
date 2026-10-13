@@ -5,7 +5,7 @@ import { prisma } from "./lib/prisma.js";
 
 const app = express();
 
-
+app.use(express.json());
 
 export const GetHealth = app.get("/health" , async (req:Request,res:Response) =>{
 
@@ -96,12 +96,13 @@ export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
 
     try {
       
-      const {service,level,since,until,attr,q,limit} = req.query;
-
+      const {service,level,since,until,attr,q,limit,cursor} = req.query;
+      const take = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit) , 1000) : 100;
       const [key, value] = String(attr).split(".");
 
       const logs = await prisma.log.findMany({
-        take: Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit) , 1000) : 100,
+        take: take+1,
+        ...(cursor ? {cursor: { id : BigInt(String(cursor)) }, skip : 1 } : {}),
         where:{
           AND:[
 
@@ -110,13 +111,20 @@ export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
             until && {timestamp: {lte:new Date(String(until))}},
             level !== undefined && { level: String(level) },
             attr && { attributes: { path: key, string_contains: value } },
-            q && { message: { contains: String(q) } }   
-            
+            q && { message: { contains: String(q) } },   
+  
+
+
           ].filter(Boolean) as any[]
         },
-        orderBy: { timestamp: "desc" }
+        orderBy: [{ timestamp: "desc"} , {id:"desc"}]
       })
-      res.json({logs : logs.map((l) => ({...l , id: l.id.toString() }))})
+
+      const rest = logs.length > take ;
+      const page = rest ? logs.slice(0,take) : logs ;
+      const next_cursor = rest ? page[page.length-1].id.toString() : null;
+
+      res.json({logs : page.map((l) => ({...l , id: l.id.toString()  })) , next_cursor})
 
 
     } catch (err) {
@@ -127,7 +135,7 @@ export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
 });
 
 
-app.use(express.json());
+
 const PORT = Number(process.env.PORT ?? 8080);
 
 app.listen(PORT, () => {
