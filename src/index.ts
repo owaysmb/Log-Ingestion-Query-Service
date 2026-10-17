@@ -2,8 +2,8 @@ import "dotenv/config";
 import express from "express";
 import { Request,Response } from "express";
 import { prisma } from "./lib/prisma.js";
-import { validateLogBatch } from "./vlaidations/validate.js";
-
+import { validateLogBatch } from "./validations/validate.js";
+import { allowedLevel } from "./validations/constants.js";
 
 const app = express();
 
@@ -21,20 +21,26 @@ export const GetHealth = app.get("/health" , async (req:Request,res:Response) =>
 
 });
 
-const allowedLevel = new Set(["error" , "debug" , "info" , "warn"]);
-
 export const PostLogs = app.post("/logs", async (req:Request,res:Response)=>{
     try {
 
-      if(!Array.isArray(req.body?.logs)) return res.status(400).json({error:"Logs array is not arrays"})
+      const body = req.body;
 
-      const result = await validateLogBatch(req.body?.logs);
-      res.status(200).json(result);
+      if(!body || typeof body !== "object" || Array.isArray(body) || !Array.isArray(body.logs)){
+        return res.status(400).json({error:"Request body must be an object with a 'logs' array"})
+      }
 
+      const result = await validateLogBatch(body.logs);
+
+      if(result.accepted === 0){
+        return res.status(400).json({error:"All log entries are invalid", rejected:result.rejected})
+      }
+
+      return res.status(200).json(result);
 
     } catch (err) {
-      res.status(500).json("error posting logs");
       console.log(err);
+      return res.status(500).json({error:"Error posting logs"});
     }
 });
 
@@ -49,9 +55,11 @@ export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
 
       const attrEntries = Object.entries(req.query).filter(([k]) => k.startsWith("attr.")).map(([key,v]) => [key.slice("attr.".length  ) ,String(v)] as const)
 
-      if(service && (!Number.isNaN(Number(service)) || !String(service).trim().length) )       {invalidInput = true; errorDescription.push("Invalid Service input")}
-      if(level && !allowedLevel.has(String(level)))                              {invalidInput = true; errorDescription.push("invalid level input")}
+      if(service && (!Number.isNaN(Number(service)) || !String(service).trim().length) )       
+        {invalidInput = true; errorDescription.push("Invalid Service input")}
 
+      if(level && !allowedLevel.has(String(level)))                             
+         {invalidInput = true; errorDescription.push("invalid level input")}
 
       if( since && (isNaN(new Date(String(since)).getTime())) || (until && (isNaN(new Date(String(until)).getTime()))) ) {
 
@@ -83,12 +91,12 @@ export const GetLogs = app.get("/logs",async(req:Request,res:Response)=>{
 
             service && {service: String(service) },
             since && {timestamp: {gte:new Date(String(since))}} ,
-            until && {timestamp: {lte:new Date(String(until))}},
+            until && {timestamp: {lt:new Date(String(until))}},
             level !== undefined && { level: String(level) },
             ...attrEntries.map(([key,value])=>(
                 { attributes: { path: [key], equals: value } }
             )) ,
-            q && { message: { contains: String(q) } },   
+            q && { message: { contains: String(q), mode: "insensitive" } },   
   
 
 
