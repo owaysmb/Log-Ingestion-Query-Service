@@ -24,3 +24,11 @@ export function parseCursor(n: unknown): bigint | null {
   if (typeof n !== "string" || !/^\d+$/.test(n)) return null;
   return BigInt(n);
 }
+
+
+// export function parseBucket(s:unknown , BS: Set<string> ): string | null {
+
+//   if(typeof s !== "string" || !BS.has(s) ) return null;
+//   return s;
+
+// }
